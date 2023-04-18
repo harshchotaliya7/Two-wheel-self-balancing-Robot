@@ -3,6 +3,9 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 
+
+
+double Axis_angle=0;
 /* This driver uses the Adafruit unified sensor library (Adafruit_Sensor),
    which provides a common 'type' for sensor data and some helper functions.
 
@@ -143,6 +146,8 @@ void setup(void)
   displaySensorStatus();
 
   bno.setExtCrystalUse(true);
+  
+
 }
 
 /**************************************************************************/
@@ -157,9 +162,10 @@ void loop(void)
   sensors_event_t event;
   bno.getEvent(&event);
 
-  double Axis_angle=event.orientation.z;
+   
   Serial.print("\tZ: ");
   Serial.print(Axis_angle,4);
   Serial.println("");
   delay(BNO055_SAMPLERATE_DELAY_MS);
+  Axis_angle=event.orientation.z;
 }
