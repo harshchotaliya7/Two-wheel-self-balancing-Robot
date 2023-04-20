@@ -3,15 +3,16 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 
-#define kp 1.5
-#define kd 150
+#define kp 1.2
+#define kd 0
+#define ki 0
 
 
 int DIR_PIN = 6;
 int PWM_PIN = 7;
 int DIR_PIN2 = 5;
 int PWM_PIN2 = 3;
-double axis_angle,diff_angle,prev_angle=0,prev_diff=0,derrivative;
+double axis_angle,diff_angle,prev_angle=0,prev_diff=0,derrivative,integral=0;
 int speed=0;
 
 
@@ -123,19 +124,28 @@ void control_motor_speed(bool dir,int speed)
   }    
 }
 
-void control_motor_pid_with_speed(double ang,int max_speed)
+int control_motor_pid_with_speed(double ang,int max_speed)
 {
   bool direction=0;
  
+ //////////////// proportional 
+
   diff_angle=axis_angle-ang;
+
+ // if(fabs(diff_angle)<1.5)
+ // {
+  //  return 0;
+//  }
   
+//////////////////////derivative
+
   derrivative=diff_angle-prev_diff;  
   
-  speed = diff_angle*kp + derrivative*kd ;//+ ((diff_angle+10000)/fabs(diff_angle+10000)*60);
-  
-  prev_angle=axis_angle;
-  
-  prev_diff=diff_angle; 
+//////////////////////intergral
+
+  integral += diff_angle;
+
+  speed = (diff_angle*kp) + (derrivative*kd) + (integral*ki);//+ ((diff_angle+10000)/fabs(diff_angle+10000)*60);
   
   if(speed>max_speed)
   {
@@ -167,8 +177,9 @@ void loop(void)
   sensors_event_t event;
   bno.getEvent(&event);
   axis_angle=event.orientation.z;
-  control_motor_pid_with_speed(-1,100);
-
+  control_motor_pid_with_speed(8,100);
+  prev_angle=axis_angle;
+  prev_diff=diff_angle; 
 
   
 /**************************************************************************
@@ -176,7 +187,7 @@ void loop(void)
 **************************************************************************/
 
  // Serial.print("\tZ: ");
- //Serial.println(speed);
+ //Serial.println(axis_angle);
   
   //control_motor_speed(1,30);
   //analogWrite(R_PWM, 0);
