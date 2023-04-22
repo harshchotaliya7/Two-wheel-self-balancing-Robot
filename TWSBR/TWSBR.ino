@@ -3,9 +3,9 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 
-#define kp 1.2
-#define kd 0
-#define ki 0
+#define kp 2
+#define kd 200
+#define ki 0.009
 
 
 int DIR_PIN = 6;
@@ -75,6 +75,7 @@ void displaySensorDetails(void)
 void setup(void)
 {
   Serial.begin(115200);
+  Serial1.begin(57600);
 
   while (!Serial) delay(10);  // wait for serial port to open!
 
@@ -88,12 +89,14 @@ void setup(void)
     while(1);
   }
 
+  /*
   pinMode(DIR_PIN, OUTPUT);
   pinMode(PWM_PIN, OUTPUT);
   pinMode(DIR_PIN2, OUTPUT);
   pinMode(PWM_PIN2, OUTPUT);
   digitalWrite(DIR_PIN,HIGH);
   digitalWrite(DIR_PIN2,HIGH);
+  */
   /* Display some basic information on this sensor */
   displaySensorDetails();
 }
@@ -103,7 +106,26 @@ void setup(void)
     Arduino loop function, called once 'setup' is complete (your own code
     should go here)
 */
+void control_motor_speed_uart(bool dir1,bool dir2,bool motor_no1,bool motor_no2,int speed1,int speed2)
+{
+   int data_send;
 
+    // Start Frame
+    Serial1.write('*');
+    
+    // Motor direction & ON/OFF configuration
+    data_send=(8*motor_no1+2*motor_no2+4*dir1+1*dir2);
+    Serial1.write(data_send);
+
+    //Motor 1 Speed
+    Serial1.write(speed1*motor_no1);
+
+    //Motor 2 Speed
+    Serial1.write(speed2*motor_no2);
+  
+    // End of Frame
+    Serial1.write('#');
+}
 void control_motor_speed(bool dir,int speed)
 {
   switch(dir)
@@ -126,16 +148,11 @@ void control_motor_speed(bool dir,int speed)
 
 int control_motor_pid_with_speed(double ang,int max_speed)
 {
-  bool direction=0;
+  bool direction1=0,direction2=0;
  
  //////////////// proportional 
 
   diff_angle=axis_angle-ang;
-
- // if(fabs(diff_angle)<1.5)
- // {
-  //  return 0;
-//  }
   
 //////////////////////derivative
 
@@ -147,6 +164,10 @@ int control_motor_pid_with_speed(double ang,int max_speed)
 
   speed = (diff_angle*kp) + (derrivative*kd) + (integral*ki);//+ ((diff_angle+10000)/fabs(diff_angle+10000)*60);
   
+  if(fabs(diff_angle)<0.5)
+  {
+   speed=0;
+  }
   if(speed>max_speed)
   {
     speed=max_speed;
@@ -157,29 +178,33 @@ int control_motor_pid_with_speed(double ang,int max_speed)
   }
   if(speed>0)
   {
-    direction=1;
-    speed=speed+60;
+    direction1=0;
+    direction2=1;
+    //speed=speed+10;
   }
   else
   {
-    direction=0;
-    speed=speed-60;
+    direction1=1;
+    direction2=0;
+    //speed=speed-10;
   }
-  //direction=~direction;
-  control_motor_speed(direction,fabs(speed));
+
+  control_motor_speed_uart(direction1,direction2,1,1,fabs(speed),fabs(speed));
   
 }
 
 /**************************************************************************/
 void loop(void)
 {
- 
+ //control_motor_speed_uart(0,1,1,1,20,20);
+
   sensors_event_t event;
   bno.getEvent(&event);
   axis_angle=event.orientation.z;
-  control_motor_pid_with_speed(8,100);
+  control_motor_pid_with_speed(1,100);
   prev_angle=axis_angle;
   prev_diff=diff_angle; 
+
 
   
 /**************************************************************************
