@@ -3,10 +3,26 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 #include <PID_v1.h>
+#include <SoftwareSerial.h>
 
-float kp=6;
-float kd=30;
-float ki=0.3;
+#define left        0 
+#define right       1
+
+#define kp_balance  1.2//6
+#define kd_balance  10//30
+#define ki_balance  0.08//0.3
+
+#define kp_axis 0
+#define kd_axis 0
+#define ki_axis 0
+
+#define sample_time 7
+
+const byte rxPin = 2;
+const byte txPin = 3;
+
+// Set up a new SoftwareSerial object
+SoftwareSerial mySerial (rxPin, txPin);
 
 /////////////////////////// for gradient descent ///////////////////////////////////
 
@@ -16,10 +32,10 @@ int DIR_PIN = 5;
 int PWM_PIN = 6;
 int DIR_PIN2 = 4;
 int PWM_PIN2 = 3;
-bool direction=0;
+bool direction=0,prev_direction=0;
 unsigned long lastMillis = 0;
 
-double axis_angle,diff_angle,prev_angle=0,prev_diff=0,derrivative,integral=0;
+double axis_angle,balance_angle,diff_angle,prev_angle=0,prev_diff=0,derrivative,integral=0,integral_ki=0,circle_angle;
 int speed=0;
 
 /* Set the delay between fresh samples */
@@ -32,8 +48,8 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire);
 void setup() {
 
    
-   Serial.begin(115200);
-
+   Serial.begin(9600);
+   mySerial.begin(9600);
    while (!Serial) delay(10);  // wait for serial port to open!
    Serial.println("Orientation Sensor Test"); Serial.println("");
 
@@ -75,17 +91,32 @@ int control_motor_pid_with_speed(double ang,int max_speed)
 {
  ////////////////////// proportional ///////////////////////////////
 
-  diff_angle=axis_angle-ang;
+  diff_angle=(ang-balance_angle)*kp_balance;
   
  ///////////////////// derivative /////////////////////////////////
 
-  derrivative=diff_angle-prev_diff;
+  derrivative=(diff_angle-prev_diff)*kd_balance;//sample_time;
   
   ////////////////// integral ////////////////////////////////////
-
+ 
   integral += diff_angle;
+  
+  integral_ki = integral * ki_balance;
 
-  speed = (diff_angle*kp) + (derrivative*kd) + (integral*ki);//+ ((diff_angle+10000)/fabs(diff_angle+10000)*60);
+  // limit the value of integral_ki 
+  // if both variable same then the actual value of integral will change
+ 
+  if(integral_ki>20)
+  {
+    integral_ki=20;
+  }
+  else if(integral_ki < -20)
+  {
+    integral_ki=-20;
+  }
+
+  // final speed calculation
+  speed = diff_angle + derrivative + integral_ki;
 
   if(speed>max_speed)
   {
@@ -95,84 +126,106 @@ int control_motor_pid_with_speed(double ang,int max_speed)
   {
     speed=-max_speed;          
   }
+
   if(speed>0)
   {
-    direction=0;
+    direction=0;  
   }
   else
-  {
-    speed=-1*speed;
+  { 
     direction=1;
+    speed=-1*speed;
   }
+
+  /////////// if we want to check prev_direction and take feedback
+  //   prev_direction=direction;
   prev_diff=diff_angle;
-  control_motor_speed(direction,speed); 
+  control_motor_speed_Simplified_Serial(left,direction,speed);
+  control_motor_speed_Simplified_Serial(right,direction,speed);  
 }
+
+void control_motor_speed_Simplified_Serial(int channel,int direction,int speed_channel)
+{
+ int data_packet=0;
+ if(speed_channel>63)
+ {
+   speed_channel=63;
+ }
+ ///////////////////////// speed bit clear ////////////////////////////
+ data_packet &= ~(0x3F<<0);
+ //////////////////////// speed bit set (desired) /////////////////////
+ data_packet |= (speed_channel<<0);
+
+ //////////////////////// direction bit clear /////////////////////////
+ data_packet &= ~(0x1<<6);
+ /////////////////////// direction bit set (desired) //////////////////
+ data_packet |= (direction<<6);
+ 
+ ////////////////////// channel bit clear /////////////////////////////
+ data_packet &= ~(0x1<<7);
+ ///////////////////// channel bit set (desired) //////////////////////
+ data_packet |= (channel<<7);
+ 
+ mySerial.write(data_packet);
+
+}
+
 void loop() {
  
-//////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////// forward ///////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////
-
- for(int i=0;i<2000;i++)
- {
+  for(int i=0;i<1000;i++)
+  {
   sensors_event_t event;
   bno.getEvent(&event);
-  axis_angle=event.orientation.z;
-
+  balance_angle=event.orientation.y;
+  // circle_angle=event.orientation.x;
+   Serial.println(balance_angle);
+  // Serial.print(balance_angle);
+  // Serial.print("   kp_balance_balance=");
+  // Serial.print(diff_angle);
+  // Serial.print("   kd_balance=");
+  // Serial.print(derrivative);
+  // Serial.print("   ki_balance=");
+  // Serial.print(integral_ki);
+  // Serial.print("   speed=");
+  // Serial.print(speed);
+  // Serial.print("   direction=");
+  // Serial.println(direction);
   unsigned long currentMillis = millis();
-  if (currentMillis - lastMillis >= 6) 
+  if (currentMillis - lastMillis >= sample_time) 
   {
     lastMillis = currentMillis;
-    control_motor_pid_with_speed(3.1,150);
+    control_motor_pid_with_speed(2.5,20);
   }
+ 
  }
-
-//////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////////////// Brake ////////////////////////////////////////////////////////
-//////////////////////////////////////////////////////////////////////////////////////////////////
-
- for(int i=0;i<500;i++)
- {
-  sensors_event_t event;
-  bno.getEvent(&event);
-  axis_angle=event.orientation.z;
-
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastMillis >= 3) 
-  {
-    lastMillis = currentMillis;
-    control_motor_pid_with_speed(-2,150);
-  }
- }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-/////////////////////////// Standing with self balancing ///////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
 
  while(1)
  {
+  
   sensors_event_t event;
   bno.getEvent(&event);
-  axis_angle=event.orientation.z;
-
+  balance_angle=event.orientation.y;
+  // circle_angle=event.orientation.x;
+  // Serial.println(balance_angle);
+  // Serial.print(balance_angle);
+  // Serial.print("   kp_balance_balance=");
+  // Serial.print(diff_angle);
+  // Serial.print("   kd_balance=");
+  // Serial.print(derrivative);
+  // Serial.print("   ki_balance=");
+  // Serial.print(integral_ki);
+  // Serial.print("   speed=");
+  // Serial.print(speed);
+  // Serial.print("   direction=");
+  // Serial.println(direction);
   unsigned long currentMillis = millis();
-  if (currentMillis - lastMillis >= 4) 
+  if (currentMillis - lastMillis >= sample_time) 
   {
     lastMillis = currentMillis;
-    control_motor_pid_with_speed(0.1,150);
+    control_motor_pid_with_speed(0,20);
   }
+ 
  }
-
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////// printing values //////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////////////////////////////////////////////
-
-  //control_motor_speed(0,30); 
-  //Serial.print("kp_value =");
-  //Serial.print("                          ");
-  //Serial.print("angle =");
-  //Serial.println(axis_angle);
-
+ 
   
 }
