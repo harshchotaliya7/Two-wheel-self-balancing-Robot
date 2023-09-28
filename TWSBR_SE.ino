@@ -8,7 +8,8 @@
 #define motor1        0 
 #define motor2        1
 
-#define amount_of_hold_angle_changed  3
+#define amount_of_hold_angle_changed        2
+#define last_amount_of_hold_angle_changed   5
 
 ///////// Proxy Pin Declaration
 
@@ -26,14 +27,14 @@
 
 #define forward_bot_angle   -1.2
 #define backward_bot_angle  -3.5
-#define stop_bot_angle      -2.9
+#define stop_bot_angle      -1.8
 
 #define kp_balance  1.2
 #define kd_balance  15
 #define ki_balance  0.065
 
-#define kp_axis 1.2
-#define kd_axis 0
+#define kp_axis 1.15
+#define kd_axis 15
 #define ki_axis 0
 
 #define sample_time 9
@@ -97,7 +98,7 @@ void setup() {
   pinMode(pIR_P3,INPUT);
   pinMode(pIR_P4,INPUT);
   pinMode(pIR_P5,INPUT_PULLUP);
-
+  hold_angle=0;
 }
 
 
@@ -159,8 +160,8 @@ void bot_move(int fwd_or_bwd_or_stop,int duration,double hold_angle_calc)
         control_motor_pid_with_speed(given_angle,20,hold_angle_calc);
       }
   }
-
 }
+
 int control_motor_pid_with_speed(double desired_balance_ang,int max_speed,double desired_axis_ang)
 {
  ///////////////////////////////////////////////////////////////////
@@ -294,7 +295,8 @@ void loop() {
   
   //  bot_move(stop,1000);
   //  bot_move(forward,1000);
- hold_angle=0;
+
+
  while(1)
  {
   sensors_event_t event;
@@ -306,43 +308,141 @@ void loop() {
     actual_axis_angle=actual_axis_angle-360;
   }
 
-  // IR_P1=digitalRead(pIR_P1);
+  IR_P1=digitalRead(pIR_P1);
   IR_P2_L=digitalRead(pIR_P2);
   IR_P3_M=digitalRead(pIR_P3);
   IR_P4_R=digitalRead(pIR_P4);
-  // IR_P5=digitalRead(pIR_P5);
+  IR_P5=digitalRead(pIR_P5);
   
-  bot_move(stop,1000,hold_angle);
+  // bot_move(stop,1000,hold_angle);
 
-  if(IR_P3_M)
+  if(IR_P3_M & IR_P2_L & IR_P4_R)
   {
-    bot_move(forward,300,hold_angle);
+    while(1)
+    {
+      bot_move(stop,100,hold_angle);
+    }
+  }
+  else if(IR_P3_M)
+  {
+    bot_move(forward,100,hold_angle);
+  }
+  else if (IR_P1)
+  {
+    while(!IR_P3_M)
+    {
+      hold_angle=hold_angle-last_amount_of_hold_angle_changed;
+      while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+      {
+        bot_move(stop,50,hold_angle);
+      }
+      IR_P1=digitalRead(pIR_P1);
+      IR_P2_L=digitalRead(pIR_P2);
+      IR_P3_M=digitalRead(pIR_P3);
+      IR_P4_R=digitalRead(pIR_P4);
+      IR_P5=digitalRead(pIR_P5);
+
+      if(IR_P4_R || IR_P5)
+      {
+        break;
+      }
+    }
+  }
+  else if(IR_P5)
+  {
+    while(!IR_P3_M)
+    {
+      hold_angle=hold_angle+last_amount_of_hold_angle_changed;
+      while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+      {
+      bot_move(stop,50,hold_angle);
+      }
+      IR_P1=digitalRead(pIR_P1);
+      IR_P2_L=digitalRead(pIR_P2);
+      IR_P3_M=digitalRead(pIR_P3);
+      IR_P4_R=digitalRead(pIR_P4);
+      IR_P5=digitalRead(pIR_P5);
+      if(IR_P2_L || IR_P1)
+      {
+        break;
+      }
+    }
   }
   else
   {
     if(IR_P2_L)
     {
-        hold_angle-=amount_of_hold_angle_changed;
-        bot_move(stop,400,hold_angle);
+      if(IR_P4_R)
+      {
+         bot_move(stop,100,hold_angle);
+      }
+      else
+      {
+        while(!IR_P3_M)
+        {
+          hold_angle=hold_angle-amount_of_hold_angle_changed;
+          while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+          {
+          bot_move(stop,50,hold_angle);
+          }
+          IR_P1=digitalRead(pIR_P1);
+          IR_P2_L=digitalRead(pIR_P2);
+          IR_P3_M=digitalRead(pIR_P3);
+          IR_P4_R=digitalRead(pIR_P4);
+          IR_P5=digitalRead(pIR_P5);
+
+          if(IR_P4_R || IR_P5)
+          {
+            break;
+          }
+        }
+      }
     }
     else if(IR_P4_R)
     {
-        hold_angle-=amount_of_hold_angle_changed;
-        bot_move(stop,400,hold_angle);
+      if(IR_P2_L)
+      {
+         bot_move(stop,100,hold_angle);
+      }
+      else
+      {
+        while(!IR_P3_M)
+        {
+          hold_angle=hold_angle+amount_of_hold_angle_changed;
+          while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+          {
+            bot_move(stop,50,hold_angle);
+          }
+          IR_P1=digitalRead(pIR_P1);
+          IR_P2_L=digitalRead(pIR_P2);
+          IR_P3_M=digitalRead(pIR_P3);
+          IR_P4_R=digitalRead(pIR_P4);
+          IR_P5=digitalRead(pIR_P5);
+          if(IR_P2_L || IR_P1)
+          {
+            break;
+          }
+        }
+      }
+    }
+    else
+    {
+      bot_move(stop,100,hold_angle);
     }
   }
-  // Serial.print(actual_axis_angle);
+
+  // Serial.println(actual_axis_angle);
   // Serial.print(" ");
-  // // // Serial.print("   ");
-  // // // Serial.print(IR_P1);
-  // // // Serial.print(" ");
+  //  Serial.print("   ");
+  //  Serial.print(IR_P1);
+  //  Serial.print(" ");
   // Serial.print(IR_P2_L);
   // Serial.print(" ");
   // Serial.print(IR_P3_M);
   // Serial.print(" ");
   // Serial.println(IR_P4_R);
 
-  // Serial.println(IR_P5);
+  //  Serial.println(IR_P5);
   
   // circle_angle=event.orientation.x;
   //control_motor_pid_with_speed(0,20,0);
