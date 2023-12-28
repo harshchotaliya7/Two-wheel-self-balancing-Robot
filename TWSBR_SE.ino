@@ -9,7 +9,7 @@
 #define motor2        1
 
 #define amount_of_hold_angle_changed        2
-#define last_amount_of_hold_angle_changed   5
+#define last_amount_of_hold_angle_changed   4
 
 ///////// Proxy Pin Declaration
 
@@ -25,19 +25,19 @@
 #define backward  1
 #define stop      2
 
-#define forward_bot_angle   -1.2
-#define backward_bot_angle  -3.5
-#define stop_bot_angle      -1.8
+#define forward_bot_angle   -0.5
+#define backward_bot_angle  -1.5
+#define stop_bot_angle      -1.1
 
-#define kp_balance  1.2
-#define kd_balance  15
-#define ki_balance  0.065
+#define kp_balance  1.15//forward - 1.08
+#define kd_balance  6.54//forward - 6.54//30
+#define ki_balance  0.065//forward - 0.044//0.065
 
-#define kp_axis 1.15
-#define kd_axis 15
+double kp_axis=0.3;//0.2//0.91
+double kd_axis=0;//7.54
 #define ki_axis 0
 
-#define sample_time 9
+#define sample_time 7 //8
 
 /////////////////////////// Software Serial Pin
 
@@ -57,6 +57,7 @@ int DIR_PIN2 = 4;
 int PWM_PIN2 = 3;
 bool motor1_direction=0,motor2_direction=0,prev_direction=0;
 unsigned long lastMillis = 0;
+int proxy=0;
 
 ////////////////// PID Variables 
 
@@ -79,9 +80,8 @@ bool IR_P1,IR_P2_L,IR_P3_M,IR_P4_R,IR_P5;
 //                                   id, address
 Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28, &Wire);
 
-void setup() {
-
-   
+void setup() 
+{
    Serial.begin(9600);
    mySerial.begin(9600);
    while (!Serial) delay(10);  // wait for serial port to open!
@@ -97,10 +97,133 @@ void setup() {
   pinMode(pIR_P2,INPUT);
   pinMode(pIR_P3,INPUT);
   pinMode(pIR_P4,INPUT);
-  pinMode(pIR_P5,INPUT_PULLUP);
+  pinMode(pIR_P5,INPUT);
   hold_angle=0;
 }
 
+void stop_bot(void)
+{
+  bot_move(stop,10,hold_angle);
+}
+
+void left_turn(void)
+{
+        while(0==IR_P3_M)
+        {
+          hold_angle=hold_angle+last_amount_of_hold_angle_changed;
+          while((actual_axis_angle > (hold_angle+1)) || (actual_axis_angle < (hold_angle-1)))
+          {
+            proxy_reading();
+            if(IR_P3_M)
+            {
+              break;
+            }
+            kp_axis=0.3;
+            kd_axis=0;
+            bot_move(stop,10,hold_angle);
+          }
+
+          if(IR_P2_L || IR_P1)
+          {
+            break;
+          }
+        }
+        kp_axis=0.3;
+        kd_axis=0;
+        hold_angle=actual_axis_angle;
+        bot_move(stop,30,hold_angle);
+}
+
+void half_left_turn(void)
+{
+        while(0==IR_P3_M)
+        {
+          hold_angle=hold_angle+(last_amount_of_hold_angle_changed*0.75);
+          while((actual_axis_angle > (hold_angle+1)) || (actual_axis_angle < (hold_angle-1)))
+          {
+            kp_axis=0.3;
+            kd_axis=0;
+            proxy_reading();
+            if(IR_P3_M)
+            {
+              break;
+            }
+            bot_move(stop,10,hold_angle);
+          }
+          if(IR_P2_L || IR_P1)
+          {
+            break;
+          }
+        }
+        kp_axis=0.3;
+        kd_axis=0;
+        hold_angle=actual_axis_angle;
+        bot_move(stop,30,hold_angle);
+
+}
+
+void right_turn(void)
+{
+  while(0==IR_P3_M)
+  {
+    hold_angle=hold_angle-last_amount_of_hold_angle_changed;
+    while((actual_axis_angle > (hold_angle+1)) || (actual_axis_angle < (hold_angle-1)))
+    {
+      proxy_reading();
+      if(IR_P3_M)
+      {
+        break;
+       }
+       kp_axis=0.3;
+       kd_axis=0;
+       bot_move(stop,10,hold_angle);
+     }
+     if(IR_P4_R || IR_P5)
+     {
+       break;
+     }
+    }
+    kp_axis=0.3;
+    kd_axis=0;
+    hold_angle=actual_axis_angle;
+    bot_move(stop,30,hold_angle);
+}
+
+void half_right_turn(void)
+{
+  while(0==IR_P3_M)
+  {
+    hold_angle=hold_angle-(last_amount_of_hold_angle_changed*0.75);
+    while((actual_axis_angle > (hold_angle+1)) || (actual_axis_angle < (hold_angle-1)))
+    {
+      kp_axis=0.3;
+      kd_axis=0;
+      proxy_reading();
+      if(IR_P3_M)
+      {
+        break;
+      }
+      bot_move(stop,10,hold_angle);
+     }
+     if(IR_P4_R || IR_P5)
+     {
+       break;
+     }
+    }
+    kp_axis=0.3;
+    kd_axis=0;
+    hold_angle=actual_axis_angle;
+    bot_move(stop,30,hold_angle);
+}
+
+void proxy_reading(void)
+{
+  IR_P1=digitalRead(pIR_P1);
+  IR_P2_L=digitalRead(pIR_P2);
+  IR_P3_M=digitalRead(pIR_P3);
+  IR_P4_R=digitalRead(pIR_P4);
+  IR_P5=digitalRead(pIR_P5);
+}
 
 void control_motor_speed(bool dir,int speed)
 {
@@ -120,6 +243,66 @@ void control_motor_speed(bool dir,int speed)
         analogWrite(PWM_PIN2, speed); 
         break;                    
   }    
+}
+
+void move_forward(void)
+{
+  bot_move(forward,50,hold_angle);
+}
+
+void turn_90_positive(void)
+{
+  while( (actual_axis_angle < -95) || (actual_axis_angle > -85) )
+  {
+    hold_angle=hold_angle-last_amount_of_hold_angle_changed;
+    while((actual_axis_angle > (hold_angle+1)) || (actual_axis_angle < (hold_angle-1)))
+    {
+      proxy_reading();
+      if(IR_P3_M)
+      {
+        break;
+       }
+       kp_axis=0.3;
+       kd_axis=0;
+       bot_move(stop,10,hold_angle);
+     }
+     if(IR_P4_R || IR_P5)
+     {
+       break;
+     }
+  }
+    kp_axis=0.3;
+    kd_axis=0;
+    hold_angle=actual_axis_angle;
+    bot_move(stop,30,hold_angle);
+}
+
+void turn_90_negative(void)
+{
+ while((actual_axis_angle > 95) || (actual_axis_angle < 85) )
+ {
+  hold_angle=hold_angle+last_amount_of_hold_angle_changed;
+  while((actual_axis_angle > (hold_angle+1)) || (actual_axis_angle < (hold_angle-1)))
+  {
+    proxy_reading();
+    if(IR_P3_M)
+    {
+     break;
+    }
+    kp_axis=0.3;
+    kd_axis=0;
+    bot_move(stop,10,hold_angle);
+  }
+
+  if(IR_P2_L || IR_P1)
+  {
+    break;
+  }
+  }
+  kp_axis=0.3;
+  kd_axis=0;
+  hold_angle=actual_axis_angle;
+  bot_move(stop,30,hold_angle);
 }
 
 void bot_move(int fwd_or_bwd_or_stop,int duration,double hold_angle_calc)
@@ -157,7 +340,7 @@ void bot_move(int fwd_or_bwd_or_stop,int duration,double hold_angle_calc)
       if (currentMillis - lastMillis >= sample_time) 
       {
         lastMillis = currentMillis;
-        control_motor_pid_with_speed(given_angle,20,hold_angle_calc);
+        control_motor_pid_with_speed(given_angle,25,hold_angle_calc);
       }
   }
 }
@@ -206,12 +389,11 @@ int control_motor_pid_with_speed(double desired_balance_ang,int max_speed,double
     integral_ki_balance=-20;
   }
 
-
 ////////////////// for motor 1 /////////////////////////////
 
   // final speed calculation
-  speed_motor1 = diff_angle_balance + derrivative_balance + integral_ki_balance + speed_axis_motor1;
-  speed_motor2 = diff_angle_balance + derrivative_balance + integral_ki_balance + speed_axis_motor2;
+  speed_motor1 = (diff_angle_balance + derrivative_balance + integral_ki_balance + speed_axis_motor1);
+  speed_motor2 = (diff_angle_balance + derrivative_balance + integral_ki_balance + speed_axis_motor2);
 
   if(speed_motor1>max_speed)
   {
@@ -292,13 +474,7 @@ void control_motor_speed_Simplified_Serial(int channel,int direction,int speed_c
 }
 
 void loop() {
-  
-  //  bot_move(stop,1000);
-  //  bot_move(forward,1000);
 
-
- while(1)
- {
   sensors_event_t event;
   bno.getEvent(&event);
   actual_balance_angle=event.orientation.y;
@@ -307,142 +483,220 @@ void loop() {
   {
     actual_axis_angle=actual_axis_angle-360;
   }
+  // Serial.print(actual_axis_angle);
+  // Serial.print("    ");
+  while(0)
+  {
+         
+        //  IR_P1=digitalRead(pIR_P1);
+        //   IR_P2_L=digitalRead(pIR_P2);
+        //   IR_P3_M=digitalRead(pIR_P3);
+        //   IR_P4_R=digitalRead(pIR_P4);
+        //   IR_P5=digitalRead(pIR_P5);
 
-  IR_P1=digitalRead(pIR_P1);
-  IR_P2_L=digitalRead(pIR_P2);
-  IR_P3_M=digitalRead(pIR_P3);
-  IR_P4_R=digitalRead(pIR_P4);
-  IR_P5=digitalRead(pIR_P5);
-  
-  // bot_move(stop,1000,hold_angle);
-
-  if(IR_P3_M & IR_P2_L & IR_P4_R)
-  {
-    while(1)
-    {
-      bot_move(stop,100,hold_angle);
-    }
+        //       Serial.print(IR_P1);
+        //       Serial.print(" ");
+        //       Serial.print(IR_P2_L);
+        //       Serial.print(" ");
+        //       Serial.print(IR_P3_M);
+        //       Serial.print(" ");
+        //       Serial.print(IR_P4_R);
+        //       Serial.print(" ");
+        //       Serial.println(IR_P5);
+    move_forward();
+      //bot_move(stop,1,hold_angle);
   }
-  else if(IR_P3_M)
+  if((actual_balance_angle) > (0 - 2))
   {
-    bot_move(forward,100,hold_angle);
-  }
-  else if (IR_P1)
-  {
-    while(!IR_P3_M)
-    {
-      hold_angle=hold_angle-last_amount_of_hold_angle_changed;
-      while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+      proxy_reading();
+      if(IR_P3_M && IR_P1 && IR_P2_L && IR_P4_R && IR_P5)
       {
-        bot_move(stop,50,hold_angle);
+        stop_bot();
       }
-      IR_P1=digitalRead(pIR_P1);
-      IR_P2_L=digitalRead(pIR_P2);
-      IR_P3_M=digitalRead(pIR_P3);
-      IR_P4_R=digitalRead(pIR_P4);
-      IR_P5=digitalRead(pIR_P5);
-
-      if(IR_P4_R || IR_P5)
+      else if(IR_P3_M && IR_P1 && IR_P2_L)
       {
-        break;
+        turn_90_positive();
       }
-    }
-  }
-  else if(IR_P5)
-  {
-    while(!IR_P3_M)
-    {
-      hold_angle=hold_angle+last_amount_of_hold_angle_changed;
-      while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+      else if(IR_P3_M && IR_P4_R && IR_P5)
       {
-      bot_move(stop,50,hold_angle);
+        turn_90_negative();
       }
-      IR_P1=digitalRead(pIR_P1);
-      IR_P2_L=digitalRead(pIR_P2);
-      IR_P3_M=digitalRead(pIR_P3);
-      IR_P4_R=digitalRead(pIR_P4);
-      IR_P5=digitalRead(pIR_P5);
-      if(IR_P2_L || IR_P1)
+      else if(IR_P3_M)
       {
-        break;
+        move_forward();
+      } 
+      else if(IR_P1)
+      {
+        right_turn();
       }
-    }
+      else if(IR_P2_L)
+      {
+        half_right_turn();
+      }
+      else if(IR_P4_R)
+      {
+        half_left_turn();
+      }    
+      else if(IR_P5)
+      {
+        left_turn();
+      }
+      else
+      {
+        stop_bot();
+      }
   }
   else
   {
-    if(IR_P2_L)
-    {
-      if(IR_P4_R)
-      {
-         bot_move(stop,100,hold_angle);
-      }
-      else
-      {
-        while(!IR_P3_M)
-        {
-          hold_angle=hold_angle-amount_of_hold_angle_changed;
-          while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
-          {
-          bot_move(stop,50,hold_angle);
-          }
-          IR_P1=digitalRead(pIR_P1);
-          IR_P2_L=digitalRead(pIR_P2);
-          IR_P3_M=digitalRead(pIR_P3);
-          IR_P4_R=digitalRead(pIR_P4);
-          IR_P5=digitalRead(pIR_P5);
-
-          if(IR_P4_R || IR_P5)
-          {
-            break;
-          }
-        }
-      }
-    }
-    else if(IR_P4_R)
-    {
-      if(IR_P2_L)
-      {
-         bot_move(stop,100,hold_angle);
-      }
-      else
-      {
-        while(!IR_P3_M)
-        {
-          hold_angle=hold_angle+amount_of_hold_angle_changed;
-          while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
-          {
-            bot_move(stop,50,hold_angle);
-          }
-          IR_P1=digitalRead(pIR_P1);
-          IR_P2_L=digitalRead(pIR_P2);
-          IR_P3_M=digitalRead(pIR_P3);
-          IR_P4_R=digitalRead(pIR_P4);
-          IR_P5=digitalRead(pIR_P5);
-          if(IR_P2_L || IR_P1)
-          {
-            break;
-          }
-        }
-      }
-    }
-    else
-    {
-      bot_move(stop,100,hold_angle);
-    }
+    stop_bot();
   }
+   
+  // while(1)
+  // {
+  //   bot_move(stop,1000,hold_angle);
+  // }
+//  while(1)
+//  {
+//   sensors_event_t event;
+//   bno.getEvent(&event);
+//   actual_balance_angle=event.orientation.y;
+//   actual_axis_angle=event.orientation.x;
+//   if(actual_axis_angle>180)
+//   {
+//     actual_axis_angle=actual_axis_angle-360;
+//   }
+
+
+                  
+//   // bot_move(stop,1000,hold_angle);
+
+//   if(IR_P3_M & IR_P2_L & IR_P4_R)
+//   {
+//     while(1)
+//     {
+//       bot_move(stop,100,hold_angle);
+//     }
+//   }
+//   else if(IR_P3_M)
+//   {
+//     bot_move(forward,100,hold_angle);
+//   }
+//   else if (IR_P1)
+//   {
+//     while(!IR_P3_M)
+//     {
+//       hold_angle=hold_angle-last_amount_of_hold_angle_changed;
+//       while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+//       {
+//         bot_move(stop,50,hold_angle);
+//       }
+      // IR_P1=digitalRead(pIR_P1);
+      // IR_P2_L=digitalRead(pIR_P2);
+      // IR_P3_M=digitalRead(pIR_P3);
+      // IR_P4_R=digitalRead(pIR_P4);
+      // IR_P5=digitalRead(pIR_P5);
+
+//       if(IR_P4_R || IR_P5)
+//       {
+//         break;
+//       }
+//     }
+//   }
+//   else if(IR_P5)
+//   {
+//     while(!IR_P3_M)
+//     {
+//       hold_angle=hold_angle+last_amount_of_hold_angle_changed;
+//       while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+//       {
+//       bot_move(stop,50,hold_angle);
+//       }
+//       IR_P1=digitalRead(pIR_P1);
+//       IR_P2_L=digitalRead(pIR_P2);
+//       IR_P3_M=digitalRead(pIR_P3);
+//       IR_P4_R=digitalRead(pIR_P4);
+//       IR_P5=digitalRead(pIR_P5);
+//       if(IR_P2_L || IR_P1)
+//       {
+//         break;
+//       }
+//     }
+//   }
+//   else
+//   {
+//     if(IR_P2_L)
+//     {
+//       if(IR_P4_R)
+//       {
+//          bot_move(stop,100,hold_angle);
+//       }
+//       else
+//       {
+//         while(!IR_P3_M)
+//         {
+//           hold_angle=hold_angle-amount_of_hold_angle_changed;
+//           while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+//           {
+//           bot_move(stop,50,hold_angle);
+//           }
+//           IR_P1=digitalRead(pIR_P1);
+//           IR_P2_L=digitalRead(pIR_P2);
+//           IR_P3_M=digitalRead(pIR_P3);
+//           IR_P4_R=digitalRead(pIR_P4);
+//           IR_P5=digitalRead(pIR_P5);
+
+//           if(IR_P4_R || IR_P5)
+//           {
+//             break;
+//           }
+//         }
+//       }
+//     }
+//     else if(IR_P4_R)
+//     {
+//       if(IR_P2_L)
+//       {
+//          bot_move(stop,100,hold_angle);
+//       }
+//       else
+//       {
+//         while(!IR_P3_M)
+//         {
+//           hold_angle=hold_angle+amount_of_hold_angle_changed;
+//           while((actual_axis_angle > hold_angle+1) || (actual_axis_angle < hold_angle-1))
+//           {
+//             bot_move(stop,50,hold_angle);
+//           }
+//           IR_P1=digitalRead(pIR_P1);
+//           IR_P2_L=digitalRead(pIR_P2);
+//           IR_P3_M=digitalRead(pIR_P3);
+//           IR_P4_R=digitalRead(pIR_P4);
+//           IR_P5=digitalRead(pIR_P5);
+//           if(IR_P2_L || IR_P1)
+//           {
+//             break;
+//           }
+//         }
+//       }
+//     }
+//     else
+//     {
+//       bot_move(stop,100,hold_angle);
+//     }
+//   }
 
   // Serial.println(actual_axis_angle);
   // Serial.print(" ");
   //  Serial.print("   ");
-  //  Serial.print(IR_P1);
-  //  Serial.print(" ");
-  // Serial.print(IR_P2_L);
-  // Serial.print(" ");
-  // Serial.print(IR_P3_M);
-  // Serial.print(" ");
-  // Serial.println(IR_P4_R);
-
-  //  Serial.println(IR_P5);
+              Serial.print(IR_P1);
+              Serial.print(" ");
+              Serial.print(IR_P2_L);
+              Serial.print(" ");
+              Serial.print(IR_P3_M);
+              Serial.print(" ");
+              Serial.print(IR_P4_R);
+              Serial.print(" ");
+              Serial.println(IR_P5);
   
   // circle_angle=event.orientation.x;
   //control_motor_pid_with_speed(0,20,0);
@@ -454,7 +708,8 @@ void loop() {
   // Serial.print(speed_motor2);
   // Serial.print("    Motor1 Direction :");
   // Serial.println(motor2_direction);
-  // Serial.println(actual_axis_angle);
+  // Serial.print(actual_axis_angle);
+  // Serial.print("     ");
   // Serial.println(actual_balance_angle);
   // Serial.print("   kp_balance_balance=");
   // Serial.print(diff_angle);
@@ -473,7 +728,7 @@ void loop() {
       //   control_motor_pid_with_speed(stop_bot_angle,20,0);
       // }
  
- }
+// }
  
   
 }
